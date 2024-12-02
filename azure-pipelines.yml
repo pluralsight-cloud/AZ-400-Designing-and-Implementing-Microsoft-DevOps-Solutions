@@ -1,0 +1,110 @@
+# Maven package Java project Web App to Linux on Azure
+# Build your Java project and deploy it to Azure as a Linux web app
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+variables:
+
+  # Azure Resource Manager service connection name
+  azureSubscription: 'ServiceConnection'
+
+  # Subscription ID
+  subscriptionId: ''
+
+  # Web app name
+  webAppName: 'webappps20398'
+
+  # Key vault name
+  keyVaultName: ''
+
+  # Resource group name
+  resourceGroup: 'ResourceGroup'
+
+  # Location of resources
+  location: 'East US'
+
+  # Agent VM image name
+  vmImageName: default
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: MavenPackageAndPublishArtifacts
+    displayName: Maven Package and Publish Artifacts
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+    - task: Maven@4
+      displayName: 'Maven Package'
+      inputs:
+        mavenPomFile: 'pom.xml'
+        mavenOptions: '-Xmx3072m'
+        javaHomeOption: 'JDKVersion'
+        jdkVersionOption: '1.17' 
+        jdkArchitectureOption: 'x64'
+        publishJUnitResults: true
+        testResultsFiles: '**/surefire-reports/TEST-*.xml'
+        goals: 'clean package'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Files to artifact staging directory'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)'
+        Contents: '**/target/*.?(war|jar)'
+        TargetFolder: $(Build.ArtifactStagingDirectory)
+
+    - upload: $(Build.ArtifactStagingDirectory)
+      artifact: drop
+
+- stage: DeployResources
+  displayName: Deploy resources stage
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: DeployResourcesToAzure
+    displayName: Deploy web app and db to Azure
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+      - task: AzureKeyVault@2
+        inputs:
+          azureSubscription: $(azureSubscription)
+          KeyVaultName: $(keyVaultName)
+          SecretsFilter: '*'
+          RunAsPreJob: false
+      - task: AzureResourceManagerTemplateDeployment@3
+        inputs:
+          deploymentScope: 'Resource Group'
+          azureResourceManagerConnection: $(azureSubscription)
+          subscriptionId: $(subscriptionId)
+          action: 'Create Or Update Resource Group'
+          resourceGroupName: $(resourceGroup)
+          location: $(location)
+          templateLocation: 'URL of the file'
+          csmFileLink: 'https://raw.githubusercontent.com/pluralsight-cloud/AZ-400-Designing-and-Implementing-Microsoft-DevOps-Solutions/refs/heads/keyvault/azuredeploy.json'
+          overrideParameters: '-webAppName $(webAppName) -mySQLAdminLoginName "azureuser" -mySQLAdminLoginPassword $(sqldbpassword)'
+          deploymentMode: 'Incremental'
+
+- stage: Deploy Web App
+  displayName: Deploy web app stage
+  dependsOn: DeployResources
+  condition: succeeded()
+  jobs:
+  - deployment: DeployLinuxWebApp
+    displayName: Deploy Linux Web App
+    environment: $(webAppName)
+    pool:
+      vmImage: $(vmImageName)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Azure Web App Deploy: '
+            inputs:
+              azureSubscription: $(azureSubscription)
+              appType: webAppLinux
+              appName: $(webAppName)
+              package: '$(Pipeline.Workspace)/drop/**/target/*.?(war|jar)'

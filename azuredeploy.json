@@ -1,0 +1,154 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.31.92.45157",
+      "templateHash": "16041289363442873179"
+    }
+  },
+  "parameters": {
+    "webAppName": {
+      "type": "string",
+      "defaultValue": "webappps20833"
+    },
+    "mySQLAdminLoginName": {
+      "type": "string",
+      "defaultValue": "azureuser"
+    },
+    "mySQLAdminLoginPassword": {
+      "type": "securestring"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "serverEdition": "Burstable",
+    "version": "8.0.21",
+    "availabilityZone": "",
+    "haEnabled": "Disabled",
+    "standbyAvailabilityZone": "1",
+    "storageSizeGB": 20,
+    "storageIops": 360,
+    "storageAutogrow": "Enabled",
+    "skuName": "Standard_B1ms",
+    "backupRetentionDays": 7,
+    "geoRedundantBackup": "Disabled",
+    "serverName": "[format('{0}sqlserver', parameters('webAppName'))]",
+    "databaseName": "[format('{0}mysqldb', parameters('webAppName'))]",
+    "hostingPlanName": "[concat(parameters('webAppName'), 'serviceplan')]"
+  },
+  "resources": [
+    {
+            "apiVersion": "2020-06-01",
+            "name": "[variables('hostingPlanName')]",
+            "type": "Microsoft.Web/serverfarms",
+            "location": "[variables('location')]",
+            "properties": {
+                "name": "[variables('hostingPlanName')]",
+                "workerSizeId": "1",
+                "reserved": true,
+                "numberOfWorkers": 0
+            },
+            "sku": {
+                "Tier": "Standard",
+                "Name": "S1"
+            }
+        },
+        {
+            "apiVersion": "2020-06-01",
+            "name": "[parameters('webAppName')]",
+            "type": "Microsoft.Web/sites",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms/', variables('hostingPlanName'))]"
+            ],
+            "properties": {
+                "name": "[parameters('webAppName')]",
+                "serverFarmId": "[variables('hostingPlanName')]"
+            },
+            "resources": [
+                {
+                    "apiVersion": "2020-06-01",
+                    "name": "connectionstrings",
+                    "type": "config",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Web/sites/', parameters('webAppName'))]"
+                    ],
+                    "properties": {
+                        "defaultConnection": {
+                            "value": "[concat('Database=', variables('databaseName'), ';Data Source=', reference(resourceId('Microsoft.DBforMySQL/flexibleServers',variables('serverName'))).fullyQualifiedDomainName, ';User Id=', parameters('mySQLAdminLoginName'),'@', variables('serverName'),';Password=', parameters('mySQLAdminLoginPassword'))]",
+                            "type": "MySql"
+                        }
+                    }
+                }
+            ]
+        },
+    
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[variables('serverName')]",
+      "location": "[variables('location')]",
+      "sku": {
+        "name": "[variables('skuName')]",
+        "tier": "[variables('serverEdition')]"
+      },
+      "properties": {
+        "version": "[variables('version')]",
+        "administratorLogin": "[parameters('mySQLAdminLoginName')]",
+        "administratorLoginPassword": "[parameters('mySQLAdminLoginPassword')]",
+        "availabilityZone": "[variables('availabilityZone')]",
+        "highAvailability": {
+          "mode": "[variables('haEnabled')]",
+          "standbyAvailabilityZone": "[variables('standbyAvailabilityZone')]"
+        },
+        "storage": {
+          "storageSizeGB": "[variables('storageSizeGB')]",
+          "iops": "[variables('storageIops')]",
+          "autoGrow": "[variables('storageAutogrow')]"
+        },
+        "backup": {
+          "backupRetentionDays": "[variables('backupRetentionDays')]",
+          "geoRedundantBackup": "[variables('geoRedundantBackup')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/firewallRules",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[format('{0}/{1}', variables('serverName'), 'rule1')]",
+      "properties": {
+        "startIpAddress": "0.0.0.0",
+        "endIpAddress": "0.0.0.0"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('serverName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[format('{0}/{1}', variables('serverName'), variables('databaseName'))]",
+      "properties": {
+        "charset": "utf8",
+        "collation": "utf8_general_ci"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('serverName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/configurations",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[format('{0}/{1}', variables('serverName'), 'require_secure_transport')]",
+      "properties": {
+        "value": "OFF",
+        "source": "user-override"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('serverName'))]"
+      ]
+    }
+  ]
+}
