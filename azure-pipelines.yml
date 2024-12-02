@@ -33,7 +33,7 @@ stages:
   - job: MavenPackageAndPublishArtifacts
     displayName: Maven Package and Publish Artifacts
     pool:
-      vmImage: $(vmImageName)
+      name: $(vmImageName)
 
     steps:
     - task: Maven@4
@@ -66,7 +66,7 @@ stages:
   - job: DeployResourcesToAzure
     displayName: Deploy web app and db to Azure
     pool:
-      vmImage: $(vmImageName)
+      name: $(vmImageName)
     steps:
       - task: AzureKeyVault@2
         inputs:
@@ -87,7 +87,7 @@ stages:
           overrideParameters: '-webAppName $(webAppName) -mySQLAdminLoginName "azureuser" -mySQLAdminLoginPassword $(sqldbpassword)'
           deploymentMode: 'Incremental'
 
-- stage: Deploy Web App
+- stage: DeployWebApp
   displayName: Deploy web app stage
   dependsOn: DeployResources
   condition: succeeded()
@@ -96,7 +96,7 @@ stages:
     displayName: Deploy Linux Web App
     environment: $(webAppName)
     pool:
-      vmImage: $(vmImageName)
+      name: $(vmImageName)
     strategy:
       runOnce:
         deploy:
